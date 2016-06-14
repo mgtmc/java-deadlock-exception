@@ -1,5 +1,8 @@
 package locks;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /*
  * Written by Doug Lea with assistance from members of JCP JSR-166
  * Expert Group and released to the public domain, as explained at
@@ -37,7 +40,7 @@ public abstract class AbstractOwnableSynchronizer
     /**
      * The moment when the current owner acquired the lock.
      */
-   private transient StackTraceElement stackElementAcquiredLock;
+   private transient Map<Thread, StackTraceElement> stackElementAcquiredLock  = new HashMap<Thread, StackTraceElement>();
 
     /**
      * Sets the thread that currently owns exclusive access.
@@ -60,11 +63,21 @@ public abstract class AbstractOwnableSynchronizer
         return exclusiveOwnerThread;
     }
     
-    protected void setStackElementAcquiredLock(StackTraceElement element) {
-    	stackElementAcquiredLock = element;
+    protected void addStackElementAcquiredLock(Thread thread, StackTraceElement element) {
+    	stackElementAcquiredLock.put(thread, element);
     }
 
-    protected final StackTraceElement getStackElementAcquiredLock() {
-        return stackElementAcquiredLock;
+    protected void removeStackElementAcquiredLock(Thread thread) {
+    	if(stackElementAcquiredLock.containsKey(thread)) {
+    		stackElementAcquiredLock.remove(thread);
+    	}
+    }
+    
+    protected final StackTraceElement getStackElementAcquiredLock(Thread thread) {
+    	if(stackElementAcquiredLock.containsKey(thread)) {
+    		return stackElementAcquiredLock.get(thread);
+    	}
+    	
+    	return null;
     }
 }

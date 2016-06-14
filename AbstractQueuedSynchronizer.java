@@ -821,11 +821,11 @@ public abstract class AbstractQueuedSynchronizer
             LinkedList<AbstractQueuedSynchronizer> desiredLocks = getOwnedLocksDesiredBy(conflictingThread);
             if (!desiredLocks.isEmpty()) {
             	String message = createDeadlockMessage(desiredLocks);
+            	isDeadlocked = true;
                 for (AbstractQueuedSynchronizer a : desiredLocks) {
+                	a.isDeadlocked = true;
                     a.markTaintedThread(conflictingThread);
-                    locksDeadlocked.add(a);
                 }
-                locksDeadlocked.add(this);
                 clearOwnedLocksByCurrentThread();
                 throw new DeadlockException(message + "Full StackTrace:");
             }
@@ -835,13 +835,14 @@ public abstract class AbstractQueuedSynchronizer
         return Thread.interrupted();
     }
     
-    private final String createDeadlockMessage(LinkedList<AbstractQueuedSynchronizer> desiredLocks){
+    private final String createDeadlockMessage(LinkedList<AbstractQueuedSynchronizer> ownedLocks){
     	StringBuilder sb = new StringBuilder();
     	sb.append("\n\n");
-    	StackTraceElement[] stack = Thread.currentThread().getStackTrace();
+    	Thread current = Thread.currentThread();
+    	StackTraceElement[] stack = current.getStackTrace();
     	sb.append(stack[7].toString() + "\n");
-    	for (AbstractQueuedSynchronizer a : desiredLocks){
-    		sb.append(a.getStackElementAcquiredLock().toString()+ "\n");
+    	for (AbstractQueuedSynchronizer a : ownedLocks){
+    		sb.append(a.getStackElementAcquiredLock(current).toString()+ "\n");
     	}
     	sb.append("\n");
     	return sb.toString();
@@ -2339,7 +2340,16 @@ public abstract class AbstractQueuedSynchronizer
 
     /** This holds a list of threads that got involved in a deadlock. As soon as they acquire the lock, an exception should be given. **/
     private LinkedList<Thread> taintedThreads = new LinkedList<Thread>();
-    private LinkedList<AbstractQueuedSynchronizer> locksDeadlocked = new LinkedList<AbstractQueuedSynchronizer>();
+    private boolean isDeadlocked = false;
+    
+    public boolean getIsDeadlocked(){
+    	return isDeadlocked;
+    }
+    
+    public void setIsDeadlocked(boolean isDeadlocked){
+    	this.isDeadlocked = isDeadlocked;
+    }
+    
     /**
      * Returns the list of owned locks. If this is the first time used
      * by the thread, then an empty list will be created. Please note
@@ -2393,13 +2403,12 @@ public abstract class AbstractQueuedSynchronizer
     	Thread current = Thread.currentThread();
     	LinkedList<AbstractQueuedSynchronizer> ownedLocks = getOwnedLocksByCurrentThread();
         sb.append("\n\n");
-        StackTraceElement[] stack = current.getStackTrace();
-        sb.append(stack[9].toString() + "\n");
-        
+//        StackTraceElement[] stack = current.getStackTrace();
+//        sb.append(stack[9].toString() + "\n");
         for (AbstractQueuedSynchronizer a : ownedLocks){
-        	if(a.getExclusiveOwnerThread() == current && a.getStackElementAcquiredLock() != null){
-        		sb.append(a.getStackElementAcquiredLock().toString() + "\n");
-        	}
+        	if(a.isDeadlocked && a.getStackElementAcquiredLock(current) != null) {
+    			sb.append(a.getStackElementAcquiredLock(current).toString() + "\n");
+    		}
         }
         sb.append("\n");
     	return sb.toString();
