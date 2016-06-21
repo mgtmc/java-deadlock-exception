@@ -107,9 +107,6 @@ public class ReentrantLock implements Lock, java.io.Serializable {
             if (c == 0) {
                 if (compareAndSetState(0, acquires)) {
                     setExclusiveOwnerThread(current);
-                    //StackTraceElement[] stack = current.getStackTrace();
-                    //setStackElementAcquiredLock(stack[7]);
-                    //setStackElementAcquiredLock(findLockStackElement(stack));
                     return true;
                 }
             }
@@ -131,8 +128,6 @@ public class ReentrantLock implements Lock, java.io.Serializable {
             if (c == 0) {
                 free = true;
                 setExclusiveOwnerThread(null);
-                //setStackElementAcquiredLock(null);
-                //removeStackElementAcquiredLock(Thread.currentThread());  
             }
             setState(c);
             return free;
@@ -192,9 +187,6 @@ public class ReentrantLock implements Lock, java.io.Serializable {
             if (compareAndSetState(0, 1)){
             	Thread current = Thread.currentThread();
                 setExclusiveOwnerThread(current);
-                //StackTraceElement[] stack = current.getStackTrace();
-                //setStackElementAcquiredLock(stack[3]);
-                //setStackElementAcquiredLock(findLockStackElement(stack));
             }    
             else
                 acquire(1);
@@ -203,13 +195,6 @@ public class ReentrantLock implements Lock, java.io.Serializable {
         protected final boolean tryAcquire(int acquires) {
             return nonfairTryAcquire(acquires);
         }
-    }
-    
-    
-    public final static void printStack(StackTraceElement[] stack){
-    	for (StackTraceElement e : stack) {
-    		System.out.println(e.toString());
-    	}
     }
 
 
@@ -234,9 +219,6 @@ public class ReentrantLock implements Lock, java.io.Serializable {
                 if (!hasQueuedPredecessors() &&
                     compareAndSetState(0, acquires)) {
                     setExclusiveOwnerThread(current);
-                    //StackTraceElement[] stack = current.getStackTrace();
-                    //setStackElementAcquiredLock(stack[6]);
-                    //setStackElementAcquiredLock(findLockStackElement(stack));
                     return true;
                 }
             }
@@ -284,10 +266,13 @@ public class ReentrantLock implements Lock, java.io.Serializable {
      * at which time the lock hold count is set to one.
      */
     public void lock() {
-    	Thread current = Thread.currentThread();
-    	StackTraceElement[] stack = current.getStackTrace();
-    	sync.addStackElementAcquiredLock(current, stack[2]);
-        sync.lock();
+    	sync.setCurrentThreadStacktrace(Thread.currentThread().getStackTrace());
+    	
+    	try {
+    		sync.lock();
+    	} catch (DeadlockException de) {
+    		throw new DeadlockException(de.getMessage());
+    	}
     }
 
     /**
@@ -367,7 +352,12 @@ public class ReentrantLock implements Lock, java.io.Serializable {
      *         thread; and {@code false} otherwise
      */
     public boolean tryLock() {
-        return sync.nonfairTryAcquire(1);
+    	sync.setCurrentThreadStacktrace(Thread.currentThread().getStackTrace());
+    	try {
+    		return sync.nonfairTryAcquire(1);
+    	} catch (DeadlockException de) {
+    		throw new DeadlockException(de.getMessage());
+    	}
     }
 
     /**

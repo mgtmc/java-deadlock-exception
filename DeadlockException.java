@@ -13,4 +13,9 @@ public class DeadlockException extends RuntimeException {
     public DeadlockException(String st) {
         super(st);
     }
+    
+    @Override
+    public Throwable fillInStackTrace() {
+        return null;
+    } 
 }
