@@ -916,46 +916,47 @@ public abstract class AbstractQueuedSynchronizer
     		secondPointer--;
     	}
     	
-    	int INITIAL_PAD = 10;
-    	int maxSize = getMaxStringSize(secondLockStackTrace, firstLockStackTrace[lockPointer]) + 4;
+    	String firstLockLabel = "FIRST LOCK";
+    	String secondLockLabel = "SECOND LOCK => DEADLOCK";
+    	
+    	int maxSize = getMaxStringSize(secondLockStackTrace, firstLockStackTrace[lockPointer], secondLockLabel) + 4;
     	int firstPointer = firstLockStackTrace.length - 1;
     	
     	while (firstPointer > lockPointer) {
-    		sb.append(padLeft(pad(firstLockStackTrace[firstPointer--].toString(), maxSize), INITIAL_PAD) + "\n");
-    		sb.append(padLeft(pad("|", maxSize),INITIAL_PAD) + "\n");
+    		sb.append(pad(firstLockStackTrace[firstPointer--].toString(), maxSize));
+    		sb.append("\n");
+    		sb.append(pad("|", maxSize));
+    		sb.append("\n");
     	}
     	
-    	int firstLockSize = getMaxStringSize(firstLockStackTrace, firstPointer);
+    	int firstLockSize = getMaxStringSize(firstLockStackTrace, firstPointer, firstLockLabel);
 
     	String arrow = " ---------> ";
-    	Queue<String> boxLock = drawBox(firstLockStackTrace, firstPointer, firstLockSize);
-    	drawBox(sb, firstLockStackTrace[firstPointer].toString(), maxSize, INITIAL_PAD, boxLock, arrow);
+    	Queue<String> boxLock = drawBox(firstLockStackTrace, firstPointer, firstLockSize, firstLockLabel);
+    	drawBox(sb, firstLockStackTrace[firstPointer].toString(), maxSize, boxLock, arrow);
     	
     	while (secondPointer > 2) {
-    		appendLine(sb, INITIAL_PAD, maxSize, arrow, boxLock, "|");
-    		appendLine(sb, INITIAL_PAD, maxSize, arrow, boxLock, secondLockStackTrace[secondPointer--].toString());  
+    		appendLine(sb, maxSize, arrow, boxLock, "|");
+    		appendLine(sb, maxSize, arrow, boxLock, secondLockStackTrace[secondPointer--].toString());  
     	}
    
-    	drawBoxLock(sb, secondLockStackTrace, secondPointer, maxSize, INITIAL_PAD, boxLock, arrow);
-    	appendLine(sb, INITIAL_PAD, maxSize, arrow, boxLock, "|");   	
-    	appendLine(sb, INITIAL_PAD, maxSize, arrow, boxLock, "V");
-    	appendLine(sb, INITIAL_PAD, maxSize, arrow, boxLock, "Second Lock / DEADLOCK");
+    	drawBoxLock(sb, secondLockStackTrace, secondPointer, maxSize, boxLock, arrow, secondLockLabel);
     	
 		while (!boxLock.isEmpty()) {
-			sb.append(padLeft(boxLock.poll(), maxSize + INITIAL_PAD + arrow.length()));
+			sb.append(padLeft(boxLock.poll(), maxSize + arrow.length()));
 			sb.append("\n");
 		}
     }
 
-	private void appendLine(StringBuilder sb, int INITIAL_PAD, int maxSize,
-			String arrow, Queue<String> boxLock, String content) {
-		sb.append(padLeft(pad(content, maxSize),INITIAL_PAD));
+	private void appendLine(StringBuilder sb, int maxSize, String arrow, 
+			Queue<String> boxLock, String content) {
+		sb.append(pad(content, maxSize));
     	if (!boxLock.isEmpty()) sb.append(padLeft(boxLock.poll(), arrow.length()));
     	sb.append("\n");
 	}
 	
-	private void drawBox(StringBuilder sb, String stackElement, int maxSize, int INITIAL_PAD, 
-			Queue<String> boxLock, String arrow){
+	private void drawBox(StringBuilder sb, String stackElement, int maxSize, Queue<String> boxLock, 
+			String arrow){
 		StringBuilder lines = new StringBuilder();
 		lines.append("+");
 		for (int i = 0; i < stackElement.length() + 2; i++) {
@@ -967,46 +968,47 @@ public abstract class AbstractQueuedSynchronizer
 		}
 		lines.append("+");
 		
-		sb.append(padLeft(pad(lines.toString(), maxSize), INITIAL_PAD));
+		sb.append(pad(lines.toString(), maxSize));
 		sb.append(padLeft(boxLock.poll(), arrow.length()));
     	sb.append("\n");
-		sb.append(padLeft(pad(". " + stackElement + " .", maxSize), INITIAL_PAD));
+		sb.append(pad(". " + stackElement + " .", maxSize));
 		sb.append(arrow);
 		sb.append(boxLock.poll() + "\n");
-		sb.append(padLeft(pad(lines.toString(), maxSize), INITIAL_PAD) + padLeft(boxLock.poll(), arrow.length()) + "\n");
+		sb.append(pad(lines.toString(), maxSize) + padLeft(boxLock.poll(), arrow.length()) + "\n");
 	}
 	
-	private void drawBoxLock(StringBuilder sb, StackTraceElement[] stack, int start, int maxSize, int INITIAL_PAD, 
-			Queue<String> boxLock, String arrow){
+	private void drawBoxLock(StringBuilder sb, StackTraceElement[] stack, int start, int maxSize, 
+			Queue<String> boxLock, String arrow, String label){
 		StringBuilder lines = new StringBuilder();
 		lines.append("+");
-		int size = getMaxStringSize(stack, start);
+		int size = getMaxStringSize(stack, start, label);
 		for (int i = 0; i < size + 2; i++) {
 			lines.append("-");
 		}
 		lines.append("+");
 		
-		appendLine(sb, INITIAL_PAD, maxSize, arrow, boxLock, "|");
-		appendLine(sb, INITIAL_PAD, maxSize, arrow, boxLock, lines.toString());
+		appendLine(sb, maxSize, arrow, boxLock, "|");
+		appendLine(sb, maxSize, arrow, boxLock, lines.toString());
+		appendLineBoxDeadlock(sb, maxSize, boxLock, arrow, size, label);
+		appendLine(sb, maxSize, arrow, boxLock, lines.toString());
     	
 		for (int i = start; i > 1; i--) {
-			sb.append(padLeft(pad("| " + pad(stack[i].toString(), size) + " |", maxSize), INITIAL_PAD));
-			if (!boxLock.isEmpty()) sb.append(padLeft(boxLock.poll(), arrow.length()));
-	    	sb.append("\n");
-	    	
-	    	sb.append(padLeft(pad("| " + pad("|", size) + " |", maxSize), INITIAL_PAD));
-			if (!boxLock.isEmpty()) sb.append(padLeft(boxLock.poll(), arrow.length()));
-	    	sb.append("\n");
+	    	appendLineBoxDeadlock(sb, maxSize, boxLock, arrow, size, stack[i].toString());
+	    	appendLineBoxDeadlock(sb, maxSize, boxLock, arrow, size, "|");
 		}	
 		
-		sb.append(padLeft(pad("| " + pad(stack[1].toString(), size) + " |", maxSize), INITIAL_PAD));
+		appendLineBoxDeadlock(sb, maxSize, boxLock, arrow, size, stack[1].toString());		
+    	appendLine(sb, maxSize, arrow, boxLock, lines.toString());
+	}
+
+	private void appendLineBoxDeadlock(StringBuilder sb, int maxSize, Queue<String> boxLock, 
+			String arrow, int size, String line) {
+		sb.append(pad("| " + pad(line, size) + " |", maxSize));
 		if (!boxLock.isEmpty()) sb.append(padLeft(boxLock.poll(), arrow.length()));
-    	sb.append("\n");
-		
-    	appendLine(sb, INITIAL_PAD, maxSize, arrow, boxLock, lines.toString());
+		sb.append("\n");
 	}
 	
-	private int getMaxStringSize(StackTraceElement[] stack, StackTraceElement element) {
+	private int getMaxStringSize(StackTraceElement[] stack, StackTraceElement element, String secondLockLabel) {
     	int max_size = element.toString().length();
     	int current_size;
     	for (int i = 0; i < stack.length - 1; i++) {
@@ -1014,10 +1016,12 @@ public abstract class AbstractQueuedSynchronizer
 			if(max_size < current_size) max_size = current_size;
 		}
     	
+    	if(max_size < secondLockLabel.length()) max_size = secondLockLabel.length();
+    	
     	return max_size;
 	}
 	
-	private int getMaxStringSize(StackTraceElement[] stack, int end) {
+	private int getMaxStringSize(StackTraceElement[] stack, int end, String firstLockLabel) {
     	int max_size = 0;
     	int current_size;
     	for (int i = 1; i <= end; i++) {
@@ -1025,23 +1029,22 @@ public abstract class AbstractQueuedSynchronizer
 			if(max_size < current_size) max_size = current_size;
 		}
     	
+    	if(max_size < firstLockLabel.length()) max_size = firstLockLabel.length();
+    	
     	return max_size;
 	}
 	
-	private Queue<String> drawBox(StackTraceElement[] stackElements, int start, int maxSize){
+	private Queue<String> drawBox(StackTraceElement[] stackElements, int start, int maxSize, String label){
 		Queue<String> queue = new LinkedList<String>();
 		StringBuilder lines = new StringBuilder();
 		lines.append("+");
 		for (int i = 0; i < maxSize + 2; i++) {
-			if(i % 2  == 0) {
-				lines.append("-");
-			} else {
-				lines.append("-");
-			}
-			
+			lines.append("-");	
 		}
 		lines.append("+");
 		
+		queue.add(lines.toString());
+		queue.add("| " + pad(label, maxSize) + " |");
 		queue.add(lines.toString());
 		for (int i = start; i > 1; i--) {
 			queue.add("| " + pad(stackElements[i].toString(), maxSize) + " |");
@@ -1049,9 +1052,6 @@ public abstract class AbstractQueuedSynchronizer
 		}
 		queue.add("| " + pad(stackElements[1].toString(), maxSize) + " |");
 		queue.add(lines.toString());
-		queue.add(pad("|", maxSize + 4));
-		queue.add(pad("V", maxSize + 4));
-		queue.add(pad("First Lock", maxSize + 4));
 		return queue;
 	}
 
