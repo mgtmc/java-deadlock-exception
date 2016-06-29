@@ -241,6 +241,7 @@ public class ReentrantLock implements Lock, java.io.Serializable {
      */
     public ReentrantLock() {
         sync = new NonfairSync();
+        sync.setIniatilizationStackElement(Thread.currentThread().getStackTrace()[2]);
     }
 
     /**
@@ -251,6 +252,7 @@ public class ReentrantLock implements Lock, java.io.Serializable {
      */
     public ReentrantLock(boolean fair) {
         sync = fair ? new FairSync() : new NonfairSync();
+        sync.setIniatilizationStackElement(Thread.currentThread().getStackTrace()[2]);
     }
 
     /**

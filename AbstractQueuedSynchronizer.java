@@ -16,6 +16,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Queue;
 
 import sun.misc.Unsafe;
@@ -821,7 +823,7 @@ public abstract class AbstractQueuedSynchronizer
         if (conflictingThread != null) {
             LinkedList<AbstractQueuedSynchronizer> desiredLocks = getOwnedLocksDesiredBy(conflictingThread);
             if (!desiredLocks.isEmpty()) {
-            	String message = createDeadlockMessage2(desiredLocks);
+            	String message = createDeadlockMessage(desiredLocks);
             	isDeadlocked = true;
                 for (AbstractQueuedSynchronizer a : desiredLocks) {
                 	a.isDeadlocked = true;
@@ -836,248 +838,7 @@ public abstract class AbstractQueuedSynchronizer
         return Thread.interrupted();
     }
     
-    private final String createDeadlockMessage(LinkedList<AbstractQueuedSynchronizer> ownedLocks){
-    	StringBuilder sb = new StringBuilder();
-    	StackTraceElement[] currentStackTrace = Thread.currentThread().getStackTrace();
-    	sb.append("\n\n============================================= \n\n");
-    	sb.append("This thread tried to acquire this lock at: \n");
-    	showLockHiddenStackLines(sb, currentStackTrace, this.getCurrentThreadStacktrace());
-    	for (AbstractQueuedSynchronizer a : ownedLocks){
-    		sb.append("This thread acquired the first lock at: \n");
-    		showLockHiddenStackLines(sb, currentStackTrace, a.getCurrentThreadStacktrace());
-    	}
-    	
-    	sb.append("============================================= \n\n");
-    	sb.append("StackTrace:");
-    	return sb.toString();
-    }
-    
-    private final void showLockHiddenStackLines(StringBuilder sb, 
-    		StackTraceElement[] currentStackTrace, StackTraceElement[] lockStackTrace) {
-    	int lockPointer = lockStackTrace.length - 1;
-    	int currentPointer = currentStackTrace.length - 1; 
-    	while (lockPointer > 2 && currentPointer > 2 &&
-    			lockStackTrace[lockPointer].toString().equals(currentStackTrace[currentPointer].toString())) {
-    		lockPointer--;
-    		currentPointer--;
-    	}
-    	
-    	for (int i = lockStackTrace.length - 1; i >= 1; i--) {
-    		sb.append(lockStackTrace[i].toString() + "\n");
-    	}
-    	sb.append("\n");
-    }
-    
-    private final String createDeadlockMessage2(LinkedList<AbstractQueuedSynchronizer> ownedLocks){
-    	StringBuilder sb = new StringBuilder();
-    	StackTraceElement[] secondLockStacktrace = this.getCurrentThreadStacktrace();
-    	StackTraceElement[] firstLockStacktrace = null;
-    	
-    	for (AbstractQueuedSynchronizer a : ownedLocks){
-    		firstLockStacktrace = a.getCurrentThreadStacktrace();
-    		break;
-    	}
-    	threadExceptionMessage(sb, firstLockStacktrace, secondLockStacktrace);
-    	return sb.toString();
-    }
-    
-    private final void threadExceptionMessage(StringBuilder sb, 
-    		StackTraceElement[] firstLockStacktrace, StackTraceElement[] secondLockStacktrace) {
-    	
-    	sb.append("\n\nFirst lock Stacktrace:\n");
-    	for (int i = 1; i < firstLockStacktrace.length; i++){
-    		sb.append("\tat ");
-    		sb.append(firstLockStacktrace[i].toString());
-    		sb.append("\n");
-    	}	
-    	sb.append("\n");
-    	sb.append("Second lock Stacktrace:\n");
-    	for (int i = 1; i < secondLockStacktrace.length; i++){
-    		sb.append("\tat ");
-    		sb.append(secondLockStacktrace[i].toString());
-    		sb.append("\n");
-    	}
-    	sb.append("\n");
-    	
-    	sb.append("THREAD FLOWCHART:\n\n");
-    	createLocksStacktraceFlow(sb, firstLockStacktrace, secondLockStacktrace);
-    }
-    
-	private void createLocksStacktraceFlow(StringBuilder sb, 
-			StackTraceElement[] firstLockStackTrace, 
-			StackTraceElement[] secondLockStackTrace) {
-    	int lockPointer = firstLockStackTrace.length - 1;
-    	int secondPointer = secondLockStackTrace.length - 1; 
 
-    	while (lockPointer >= 0 && secondPointer >= 0 &&
-    			firstLockStackTrace[lockPointer].toString().equals(
-    					secondLockStackTrace[secondPointer].toString())) {
-    		lockPointer--;
-    		secondPointer--;
-    	}
-    	
-    	String firstLockLabel = "FIRST LOCK";
-    	String secondLockLabel = "SECOND LOCK => DEADLOCK";
-    	
-    	int maxSize = getMaxStringSize(secondLockStackTrace, firstLockStackTrace[lockPointer], secondLockLabel) + 4;
-    	int firstPointer = firstLockStackTrace.length - 1;
-    	
-    	while (firstPointer > lockPointer) {
-    		sb.append(pad(firstLockStackTrace[firstPointer--].toString(), maxSize));
-    		sb.append("\n");
-    		sb.append(pad("|", maxSize));
-    		sb.append("\n");
-    	}
-    	
-    	int firstLockSize = getMaxStringSize(firstLockStackTrace, firstPointer, firstLockLabel);
-
-    	String arrow = " ---------> ";
-    	Queue<String> boxLock = drawBox(firstLockStackTrace, firstPointer, firstLockSize, firstLockLabel);
-    	drawBox(sb, firstLockStackTrace[firstPointer].toString(), maxSize, boxLock, arrow);
-    	
-    	while (secondPointer > 2) {
-    		appendLine(sb, maxSize, arrow, boxLock, "|");
-    		appendLine(sb, maxSize, arrow, boxLock, secondLockStackTrace[secondPointer--].toString());  
-    	}
-   
-    	drawBoxLock(sb, secondLockStackTrace, secondPointer, maxSize, boxLock, arrow, secondLockLabel);
-    	
-		while (!boxLock.isEmpty()) {
-			sb.append(padLeft(boxLock.poll(), maxSize + arrow.length()));
-			sb.append("\n");
-		}
-    }
-
-	private void appendLine(StringBuilder sb, int maxSize, String arrow, 
-			Queue<String> boxLock, String content) {
-		sb.append(pad(content, maxSize));
-    	if (!boxLock.isEmpty()) sb.append(padLeft(boxLock.poll(), arrow.length()));
-    	sb.append("\n");
-	}
-	
-	private void drawBox(StringBuilder sb, String stackElement, int maxSize, Queue<String> boxLock, 
-			String arrow){
-		StringBuilder lines = new StringBuilder();
-		lines.append("+");
-		for (int i = 0; i < stackElement.length() + 2; i++) {
-			if(i % 2  == 0) {
-				lines.append("-");
-			} else {
-				lines.append(".");
-			}
-		}
-		lines.append("+");
-		
-		sb.append(pad(lines.toString(), maxSize));
-		sb.append(padLeft(boxLock.poll(), arrow.length()));
-    	sb.append("\n");
-		sb.append(pad(". " + stackElement + " .", maxSize));
-		sb.append(arrow);
-		sb.append(boxLock.poll() + "\n");
-		sb.append(pad(lines.toString(), maxSize) + padLeft(boxLock.poll(), arrow.length()) + "\n");
-	}
-	
-	private void drawBoxLock(StringBuilder sb, StackTraceElement[] stack, int start, int maxSize, 
-			Queue<String> boxLock, String arrow, String label){
-		StringBuilder lines = new StringBuilder();
-		lines.append("+");
-		int size = getMaxStringSize(stack, start, label);
-		for (int i = 0; i < size + 2; i++) {
-			lines.append("-");
-		}
-		lines.append("+");
-		
-		appendLine(sb, maxSize, arrow, boxLock, "|");
-		appendLine(sb, maxSize, arrow, boxLock, lines.toString());
-		appendLineBoxDeadlock(sb, maxSize, boxLock, arrow, size, label);
-		appendLine(sb, maxSize, arrow, boxLock, lines.toString());
-    	
-		for (int i = start; i > 1; i--) {
-	    	appendLineBoxDeadlock(sb, maxSize, boxLock, arrow, size, stack[i].toString());
-	    	appendLineBoxDeadlock(sb, maxSize, boxLock, arrow, size, "|");
-		}	
-		
-		appendLineBoxDeadlock(sb, maxSize, boxLock, arrow, size, stack[1].toString());		
-    	appendLine(sb, maxSize, arrow, boxLock, lines.toString());
-	}
-
-	private void appendLineBoxDeadlock(StringBuilder sb, int maxSize, Queue<String> boxLock, 
-			String arrow, int size, String line) {
-		sb.append(pad("| " + pad(line, size) + " |", maxSize));
-		if (!boxLock.isEmpty()) sb.append(padLeft(boxLock.poll(), arrow.length()));
-		sb.append("\n");
-	}
-	
-	private int getMaxStringSize(StackTraceElement[] stack, StackTraceElement element, String secondLockLabel) {
-    	int max_size = element.toString().length();
-    	int current_size;
-    	for (int i = 0; i < stack.length - 1; i++) {
-    		current_size = stack[i].toString().length();
-			if(max_size < current_size) max_size = current_size;
-		}
-    	
-    	if(max_size < secondLockLabel.length()) max_size = secondLockLabel.length();
-    	
-    	return max_size;
-	}
-	
-	private int getMaxStringSize(StackTraceElement[] stack, int end, String firstLockLabel) {
-    	int max_size = 0;
-    	int current_size;
-    	for (int i = 1; i <= end; i++) {
-    		current_size = stack[i].toString().length();
-			if(max_size < current_size) max_size = current_size;
-		}
-    	
-    	if(max_size < firstLockLabel.length()) max_size = firstLockLabel.length();
-    	
-    	return max_size;
-	}
-	
-	private Queue<String> drawBox(StackTraceElement[] stackElements, int start, int maxSize, String label){
-		Queue<String> queue = new LinkedList<String>();
-		StringBuilder lines = new StringBuilder();
-		lines.append("+");
-		for (int i = 0; i < maxSize + 2; i++) {
-			lines.append("-");	
-		}
-		lines.append("+");
-		
-		queue.add(lines.toString());
-		queue.add("| " + pad(label, maxSize) + " |");
-		queue.add(lines.toString());
-		for (int i = start; i > 1; i--) {
-			queue.add("| " + pad(stackElements[i].toString(), maxSize) + " |");
-			queue.add("| " + pad("|", maxSize) + " |");
-		}
-		queue.add("| " + pad(stackElements[1].toString(), maxSize) + " |");
-		queue.add(lines.toString());
-		return queue;
-	}
-
-	private String pad(String s, int maxLength) {
-		double padLeft = Math.floor((maxLength - s.length())/2.0);
-		double padRight = Math.ceil((maxLength - s.length())/2.0);
-		StringBuilder sb = new StringBuilder();
-		
-		for (int i = 0; i < padLeft; i++) {
-			sb.append(" ");
-		}
-		sb.append(s);
-		for (int i = 0; i < padRight; i++) {
-			sb.append(" ");
-		}
-	    return sb.toString();  
-	}
-	
-	private String padLeft(String s, int length) {
-		StringBuilder sb = new StringBuilder();
-		for (int i = 0; i < length; i++) {
-			sb.append(" ");
-		}
-		sb.append(s);
-	    return sb.toString();  
-	}
 
     /*
      * Various flavors of acquire, varying in exclusive/shared and
@@ -2579,6 +2340,9 @@ public abstract class AbstractQueuedSynchronizer
     };
     
     private boolean isDeadlocked = false;
+    private ThreadLocal<StackTraceElement[]> currentThreadStacktrace = 
+			new ThreadLocal<StackTraceElement[]>();
+    private volatile StackTraceElement iniatilizationStackElement = null;
     
     public boolean getIsDeadlocked(){
     	return isDeadlocked;
@@ -2587,9 +2351,6 @@ public abstract class AbstractQueuedSynchronizer
     public void setIsDeadlocked(boolean isDeadlocked){
     	this.isDeadlocked = isDeadlocked;
     }
-    
-    private ThreadLocal<StackTraceElement[]> currentThreadStacktrace = 
-			new ThreadLocal<StackTraceElement[]>();
 
 	public StackTraceElement[] getCurrentThreadStacktrace(){
 		return currentThreadStacktrace.get();
@@ -2598,6 +2359,15 @@ public abstract class AbstractQueuedSynchronizer
 	public void setCurrentThreadStacktrace(StackTraceElement[] lockStacktrace){
 		currentThreadStacktrace.set(lockStacktrace);
 	}
+	
+	public StackTraceElement getIniatilizationStackElement(){		
+		return iniatilizationStackElement;
+	}
+
+	public void setIniatilizationStackElement(StackTraceElement iniatilizationElement){
+		iniatilizationStackElement = iniatilizationElement;
+	}
+	
 
     /** This holds a list of threads that got involved in a deadlock. As soon as they acquire the lock, an exception should be given. **/
     private LinkedList<Thread> taintedThreads = new LinkedList<Thread>();
@@ -2643,45 +2413,11 @@ public abstract class AbstractQueuedSynchronizer
         } else {
             registerOwnedLock();
             if (isThreadTainted()) {
-            	String message = createThreadTaintedDeadlockMessage2();
+            	String message = createThreadTaintedDeadlockMessage();
                 clearOwnedLocksByCurrentThread();
                 throw new DeadlockException(message);
             }
         }
-    }
-    
-    protected final String createThreadTaintedDeadlockMessage(){
-    	StringBuilder sb = new StringBuilder();
-    	LinkedList<AbstractQueuedSynchronizer> ownedLocks = getOwnedLocksByCurrentThread();
-        sb.append("\n\n============================================= \n\n");
-        
-        StackTraceElement[] currentStack = Thread.currentThread().getStackTrace();
-        for (int i = 0; i < ownedLocks.size(); i++){
-        	if(ownedLocks.get(i).isDeadlocked) {
-        		if(i == 0) sb.append("This thread tried to acquire this lock at: \n");
-        		else sb.append("This thread acquired the first lock at: \n");
-        		showLockHiddenStackLines(sb, currentStack, ownedLocks.get(i).getCurrentThreadStacktrace());
-    		}
-        }
-        sb.append("=============================================\n\n");
-        sb.append("StackTrace:");
-        
-    	return sb.toString();
-    }
-    
-    protected final String createThreadTaintedDeadlockMessage2(){
-    	StringBuilder sb = new StringBuilder();
-    	LinkedList<AbstractQueuedSynchronizer> ownedLocks = getOwnedLocksByCurrentThread();
-    	ArrayList<StackTraceElement[]> locksDeadlocked = new ArrayList<>();
-        for (int i = 0; i < ownedLocks.size(); i++){
-        	if(ownedLocks.get(i).isDeadlocked) {
-        		locksDeadlocked.add(ownedLocks.get(i).getCurrentThreadStacktrace());
-    		}
-        }
-
-        threadExceptionMessage(sb, locksDeadlocked.get(1), locksDeadlocked.get(0));
-        
-    	return sb.toString();
     }
 
     /**
@@ -2759,5 +2495,236 @@ public abstract class AbstractQueuedSynchronizer
     private boolean isThreadTainted() {
         return clearInactiveTaintedThreads(Thread.currentThread());
     }
+    
+    protected final String createThreadTaintedDeadlockMessage(){
+    	StringBuilder sb = new StringBuilder();
+    	LinkedList<AbstractQueuedSynchronizer> ownedLocks = getOwnedLocksByCurrentThread();
+    	ArrayList<AbstractQueuedSynchronizer> locksDeadlocked = new ArrayList<>();
+        for (int i = 0; i < ownedLocks.size(); i++){
+        	if(ownedLocks.get(i).isDeadlocked) {
+        		locksDeadlocked.add(ownedLocks.get(i));
+    		}
+        }
+
+        threadExceptionMessage(sb, locksDeadlocked.get(1), locksDeadlocked.get(0));
+        
+    	return sb.toString();
+    }
+    
+    private final String createDeadlockMessage(LinkedList<AbstractQueuedSynchronizer> ownedLocks){
+    	StringBuilder sb = new StringBuilder();
+    	AbstractQueuedSynchronizer firstLock = ownedLocks.get(0);
+    	
+    	threadExceptionMessage(sb, firstLock, this);
+    	return sb.toString();
+    }
+    
+    private final void threadExceptionMessage(StringBuilder sb, 
+    		AbstractQueuedSynchronizer firstLock, AbstractQueuedSynchronizer secondLock) {
+    	
+    	StackTraceElement[] firstLockStacktrace = firstLock.getCurrentThreadStacktrace();
+    	StackTraceElement[] secondLockStacktrace = secondLock.getCurrentThreadStacktrace();
+    	
+    	sb.append("\n\nThe first lock was initialized at:\n");
+    	sb.append("\t ");
+    	if(firstLock.getIniatilizationStackElement() != null) sb.append(firstLock.getIniatilizationStackElement().toString());
+    	sb.append("\n\nThe second lock was initialized at:\n");
+    	sb.append("\t ");
+    	if(secondLock.getIniatilizationStackElement() != null) sb.append(secondLock.getIniatilizationStackElement().toString());
+    	
+    	sb.append("\n\nFirst lock Stacktrace:\n");
+    	for (int i = 1; i < firstLockStacktrace.length; i++){
+    		sb.append("\tat ");
+    		sb.append(firstLockStacktrace[i].toString());
+    		sb.append("\n");
+    	}	
+    	sb.append("\n");
+    	sb.append("Second lock Stacktrace:\n");
+    	for (int i = 1; i < secondLockStacktrace.length; i++){
+    		sb.append("\tat ");
+    		sb.append(secondLockStacktrace[i].toString());
+    		sb.append("\n");
+    	}
+    	sb.append("\n");
+    	
+    	sb.append("THREAD FLOWCHART:\n\n");
+    	createLocksStacktraceFlow(sb, firstLockStacktrace, secondLockStacktrace);
+    }
+    
+	private void createLocksStacktraceFlow(StringBuilder sb, 
+			StackTraceElement[] firstLockStackTrace, 
+			StackTraceElement[] secondLockStackTrace) {
+    	int lockPointer = firstLockStackTrace.length - 1;
+    	int secondPointer = secondLockStackTrace.length - 1; 
+
+    	while (lockPointer >= 0 && secondPointer >= 0 &&
+    			firstLockStackTrace[lockPointer].toString().equals(
+    					secondLockStackTrace[secondPointer].toString())) {
+    		lockPointer--;
+    		secondPointer--;
+    	}
+    	
+    	String firstLockLabel = "FIRST LOCK";
+    	String secondLockLabel = "SECOND LOCK => DEADLOCK";
+    	
+    	int maxSize = getMaxStringSize(secondLockStackTrace, firstLockStackTrace[lockPointer], secondLockLabel) + 4;
+    	int firstPointer = firstLockStackTrace.length - 1;
+    	
+    	while (firstPointer > lockPointer) {
+    		sb.append(pad(firstLockStackTrace[firstPointer--].toString(), maxSize));
+    		sb.append("\n");
+    		sb.append(pad("|", maxSize));
+    		sb.append("\n");
+    	}
+    	
+    	int firstLockSize = getMaxStringSize(firstLockStackTrace, firstPointer, firstLockLabel);
+
+    	String arrow = " ---------> ";
+    	Queue<String> boxLock = drawBox(firstLockStackTrace, firstPointer, firstLockSize, firstLockLabel);
+    	drawBox(sb, firstLockStackTrace[firstPointer].toString(), maxSize, boxLock, arrow);
+    	
+    	while (secondPointer > 2) {
+    		appendLine(sb, maxSize, arrow, boxLock, "|");
+    		appendLine(sb, maxSize, arrow, boxLock, secondLockStackTrace[secondPointer--].toString());  
+    	}
+   
+    	drawBoxLock(sb, secondLockStackTrace, secondPointer, maxSize, boxLock, arrow, secondLockLabel);
+    	
+		while (!boxLock.isEmpty()) {
+			sb.append(padLeft(boxLock.poll(), maxSize + arrow.length()));
+			sb.append("\n");
+		}
+    }
+
+	private void appendLine(StringBuilder sb, int maxSize, String arrow, 
+			Queue<String> boxLock, String content) {
+		sb.append(pad(content, maxSize));
+    	if (!boxLock.isEmpty()) sb.append(padLeft(boxLock.poll(), arrow.length()));
+    	sb.append("\n");
+	}
+	
+	private void drawBox(StringBuilder sb, String stackElement, int maxSize, Queue<String> boxLock, 
+			String arrow){
+		StringBuilder lines = new StringBuilder();
+		lines.append("+");
+		for (int i = 0; i < stackElement.length() + 2; i++) {
+			if(i % 2  == 0) {
+				lines.append("-");
+			} else {
+				lines.append(".");
+			}
+		}
+		lines.append("+");
+		
+		sb.append(pad(lines.toString(), maxSize));
+		sb.append(padLeft(boxLock.poll(), arrow.length()));
+    	sb.append("\n");
+		sb.append(pad(". " + stackElement + " .", maxSize));
+		sb.append(arrow);
+		sb.append(boxLock.poll() + "\n");
+		sb.append(pad(lines.toString(), maxSize) + padLeft(boxLock.poll(), arrow.length()) + "\n");
+	}
+	
+	private void drawBoxLock(StringBuilder sb, StackTraceElement[] stack, int start, int maxSize, 
+			Queue<String> boxLock, String arrow, String label){
+		StringBuilder lines = new StringBuilder();
+		lines.append("+");
+		int size = getMaxStringSize(stack, start, label);
+		for (int i = 0; i < size + 2; i++) {
+			lines.append("-");
+		}
+		lines.append("+");
+		
+		appendLine(sb, maxSize, arrow, boxLock, "|");
+		appendLine(sb, maxSize, arrow, boxLock, lines.toString());
+		appendLineBoxDeadlock(sb, maxSize, boxLock, arrow, size, label);
+		appendLine(sb, maxSize, arrow, boxLock, lines.toString());
+    	
+		for (int i = start; i > 1; i--) {
+	    	appendLineBoxDeadlock(sb, maxSize, boxLock, arrow, size, stack[i].toString());
+	    	appendLineBoxDeadlock(sb, maxSize, boxLock, arrow, size, "|");
+		}	
+		
+		appendLineBoxDeadlock(sb, maxSize, boxLock, arrow, size, stack[1].toString());		
+    	appendLine(sb, maxSize, arrow, boxLock, lines.toString());
+	}
+
+	private void appendLineBoxDeadlock(StringBuilder sb, int maxSize, Queue<String> boxLock, 
+			String arrow, int size, String line) {
+		sb.append(pad("| " + pad(line, size) + " |", maxSize));
+		if (!boxLock.isEmpty()) sb.append(padLeft(boxLock.poll(), arrow.length()));
+		sb.append("\n");
+	}
+	
+	private int getMaxStringSize(StackTraceElement[] stack, StackTraceElement element, String secondLockLabel) {
+    	int max_size = element.toString().length();
+    	int current_size;
+    	for (int i = 0; i < stack.length - 1; i++) {
+    		current_size = stack[i].toString().length();
+			if(max_size < current_size) max_size = current_size;
+		}
+    	
+    	if(max_size < secondLockLabel.length()) max_size = secondLockLabel.length();
+    	
+    	return max_size;
+	}
+	
+	private int getMaxStringSize(StackTraceElement[] stack, int end, String firstLockLabel) {
+    	int max_size = 0;
+    	int current_size;
+    	for (int i = 1; i <= end; i++) {
+    		current_size = stack[i].toString().length();
+			if(max_size < current_size) max_size = current_size;
+		}
+    	
+    	if(max_size < firstLockLabel.length()) max_size = firstLockLabel.length();
+    	
+    	return max_size;
+	}
+	
+	private Queue<String> drawBox(StackTraceElement[] stackElements, int start, int maxSize, String label){
+		Queue<String> queue = new LinkedList<String>();
+		StringBuilder lines = new StringBuilder();
+		lines.append("+");
+		for (int i = 0; i < maxSize + 2; i++) {
+			lines.append("-");	
+		}
+		lines.append("+");
+		
+		queue.add(lines.toString());
+		queue.add("| " + pad(label, maxSize) + " |");
+		queue.add(lines.toString());
+		for (int i = start; i > 1; i--) {
+			queue.add("| " + pad(stackElements[i].toString(), maxSize) + " |");
+			queue.add("| " + pad("|", maxSize) + " |");
+		}
+		queue.add("| " + pad(stackElements[1].toString(), maxSize) + " |");
+		queue.add(lines.toString());
+		return queue;
+	}
+
+	private String pad(String s, int maxLength) {
+		double padLeft = Math.floor((maxLength - s.length())/2.0);
+		double padRight = Math.ceil((maxLength - s.length())/2.0);
+		StringBuilder sb = new StringBuilder();
+		
+		for (int i = 0; i < padLeft; i++) {
+			sb.append(" ");
+		}
+		sb.append(s);
+		for (int i = 0; i < padRight; i++) {
+			sb.append(" ");
+		}
+	    return sb.toString();  
+	}
+	
+	private String padLeft(String s, int length) {
+		StringBuilder sb = new StringBuilder();
+		for (int i = 0; i < length; i++) {
+			sb.append(" ");
+		}
+		sb.append(s);
+	    return sb.toString();  
+	}
 
 }
