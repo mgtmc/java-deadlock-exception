@@ -2525,10 +2525,10 @@ public abstract class AbstractQueuedSynchronizer
     	StackTraceElement[] firstLockStacktrace = firstLock.getCurrentThreadStacktrace();
     	StackTraceElement[] secondLockStacktrace = secondLock.getCurrentThreadStacktrace();
     	
-    	sb.append("\n\nThe first lock was initialized at:\n");
+    	sb.append("\n\nThe first lock was created at:\n");
     	sb.append("\t ");
     	if(firstLock.getIniatilizationStackElement() != null) sb.append(firstLock.getIniatilizationStackElement().toString());
-    	sb.append("\n\nThe second lock was initialized at:\n");
+    	sb.append("\n\nThe second lock was created at:\n");
     	sb.append("\t ");
     	if(secondLock.getIniatilizationStackElement() != null) sb.append(secondLock.getIniatilizationStackElement().toString());
     	
