@@ -12,6 +12,12 @@ import java.lang.reflect.Field;
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -2340,9 +2346,9 @@ public abstract class AbstractQueuedSynchronizer
     };
     
     private boolean isDeadlocked = false;
-    private ThreadLocal<StackTraceElement[]> currentThreadStacktrace = 
-			new ThreadLocal<StackTraceElement[]>();
-    private volatile StackTraceElement iniatilizationStackElement = null;
+    private ThreadLocal<Throwable> currentThreadStacktrace = 
+			new ThreadLocal<Throwable>();
+    private volatile Throwable lockCreationStacktrace = null;
     
     public boolean getIsDeadlocked(){
     	return isDeadlocked;
@@ -2352,20 +2358,20 @@ public abstract class AbstractQueuedSynchronizer
     	this.isDeadlocked = isDeadlocked;
     }
 
-	public StackTraceElement[] getCurrentThreadStacktrace(){
+	public Throwable getCurrentThreadStacktrace(){
 		return currentThreadStacktrace.get();
 	}
 
-	public void setCurrentThreadStacktrace(StackTraceElement[] lockStacktrace){
-		currentThreadStacktrace.set(lockStacktrace);
+	public void setCurrentThreadStacktrace(Throwable throwable){
+		currentThreadStacktrace.set(throwable);
 	}
 	
-	public StackTraceElement getIniatilizationStackElement(){		
-		return iniatilizationStackElement;
+	public Throwable getIniatilizationStackElement(){		
+		return lockCreationStacktrace;
 	}
 
-	public void setIniatilizationStackElement(StackTraceElement iniatilizationElement){
-		iniatilizationStackElement = iniatilizationElement;
+	public void setIniatilizationStackElement(Throwable throwable){
+		lockCreationStacktrace = throwable;
 	}
 	
 
@@ -2522,25 +2528,25 @@ public abstract class AbstractQueuedSynchronizer
     private final void threadExceptionMessage(StringBuilder sb, 
     		AbstractQueuedSynchronizer firstLock, AbstractQueuedSynchronizer secondLock) {
     	
-    	StackTraceElement[] firstLockStacktrace = firstLock.getCurrentThreadStacktrace();
-    	StackTraceElement[] secondLockStacktrace = secondLock.getCurrentThreadStacktrace();
+    	StackTraceElement[] firstLockStacktrace = firstLock.getCurrentThreadStacktrace().getStackTrace();
+    	StackTraceElement[] secondLockStacktrace = secondLock.getCurrentThreadStacktrace().getStackTrace();
     	
     	sb.append("\n\nThe first lock was created at:\n");
     	sb.append("\t ");
-    	if(firstLock.getIniatilizationStackElement() != null) sb.append(firstLock.getIniatilizationStackElement().toString());
+    	if(firstLock.getIniatilizationStackElement() != null) sb.append(firstLock.getIniatilizationStackElement().getStackTrace()[1].toString());
     	sb.append("\n\nThe second lock was created at:\n");
     	sb.append("\t ");
-    	if(secondLock.getIniatilizationStackElement() != null) sb.append(secondLock.getIniatilizationStackElement().toString());
+    	if(secondLock.getIniatilizationStackElement() != null) sb.append(secondLock.getIniatilizationStackElement().getStackTrace()[1].toString());
     	
     	sb.append("\n\nFirst lock Stacktrace:\n");
-    	for (int i = 1; i < firstLockStacktrace.length; i++){
+    	for (int i = 0; i < firstLockStacktrace.length; i++){
     		sb.append("\tat ");
     		sb.append(firstLockStacktrace[i].toString());
     		sb.append("\n");
     	}	
     	sb.append("\n");
     	sb.append("Second lock Stacktrace:\n");
-    	for (int i = 1; i < secondLockStacktrace.length; i++){
+    	for (int i = 0; i < secondLockStacktrace.length; i++){
     		sb.append("\tat ");
     		sb.append(secondLockStacktrace[i].toString());
     		sb.append("\n");
@@ -2583,7 +2589,7 @@ public abstract class AbstractQueuedSynchronizer
     	Queue<String> boxLock = drawBox(firstLockStackTrace, firstPointer, firstLockSize, firstLockLabel);
     	drawBox(sb, firstLockStackTrace[firstPointer].toString(), maxSize, boxLock, arrow);
     	
-    	while (secondPointer > 2) {
+    	while (secondPointer > 1) {
     		appendLine(sb, maxSize, arrow, boxLock, "|");
     		appendLine(sb, maxSize, arrow, boxLock, secondLockStackTrace[secondPointer--].toString());  
     	}
@@ -2640,12 +2646,12 @@ public abstract class AbstractQueuedSynchronizer
 		appendLineBoxDeadlock(sb, maxSize, boxLock, arrow, size, label);
 		appendLine(sb, maxSize, arrow, boxLock, lines.toString());
     	
-		for (int i = start; i > 1; i--) {
+		for (int i = start; i > 0; i--) {
 	    	appendLineBoxDeadlock(sb, maxSize, boxLock, arrow, size, stack[i].toString());
 	    	appendLineBoxDeadlock(sb, maxSize, boxLock, arrow, size, "|");
 		}	
 		
-		appendLineBoxDeadlock(sb, maxSize, boxLock, arrow, size, stack[1].toString());		
+		appendLineBoxDeadlock(sb, maxSize, boxLock, arrow, size, stack[0].toString());		
     	appendLine(sb, maxSize, arrow, boxLock, lines.toString());
 	}
 
@@ -2672,7 +2678,7 @@ public abstract class AbstractQueuedSynchronizer
 	private int getMaxStringSize(StackTraceElement[] stack, int end, String firstLockLabel) {
     	int max_size = 0;
     	int current_size;
-    	for (int i = 1; i <= end; i++) {
+    	for (int i = 0; i <= end; i++) {
     		current_size = stack[i].toString().length();
 			if(max_size < current_size) max_size = current_size;
 		}
@@ -2694,11 +2700,11 @@ public abstract class AbstractQueuedSynchronizer
 		queue.add(lines.toString());
 		queue.add("| " + pad(label, maxSize) + " |");
 		queue.add(lines.toString());
-		for (int i = start; i > 1; i--) {
+		for (int i = start; i > 0; i--) {
 			queue.add("| " + pad(stackElements[i].toString(), maxSize) + " |");
 			queue.add("| " + pad("|", maxSize) + " |");
 		}
-		queue.add("| " + pad(stackElements[1].toString(), maxSize) + " |");
+		queue.add("| " + pad(stackElements[0].toString(), maxSize) + " |");
 		queue.add(lines.toString());
 		return queue;
 	}
@@ -2725,6 +2731,15 @@ public abstract class AbstractQueuedSynchronizer
 		}
 		sb.append(s);
 	    return sb.toString();  
+	}
+	
+	public class StackTraceSaver implements Callable<Throwable> {
+	    public StackTraceSaver() {}
+
+	    public Throwable call() throws Exception {
+	        return new Throwable();
+
+	    }
 	}
 
 }

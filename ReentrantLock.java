@@ -11,7 +11,6 @@ import java.util.concurrent.locks.Lock;
 
 import java.util.concurrent.TimeUnit;
 import java.util.Collection;
-
 import java.lang.Thread;
 
 /**
@@ -241,7 +240,7 @@ public class ReentrantLock implements Lock, java.io.Serializable {
      */
     public ReentrantLock() {
         sync = new NonfairSync();
-        sync.setIniatilizationStackElement(Thread.currentThread().getStackTrace()[2]);
+        sync.setIniatilizationStackElement(new Throwable());
     }
 
     /**
@@ -252,7 +251,7 @@ public class ReentrantLock implements Lock, java.io.Serializable {
      */
     public ReentrantLock(boolean fair) {
         sync = fair ? new FairSync() : new NonfairSync();
-        sync.setIniatilizationStackElement(Thread.currentThread().getStackTrace()[2]);
+        sync.setIniatilizationStackElement(new Throwable());
     }
 
     /**
@@ -270,7 +269,7 @@ public class ReentrantLock implements Lock, java.io.Serializable {
      * at which time the lock hold count is set to one.
      */
     public void lock() {
-    	sync.setCurrentThreadStacktrace(Thread.currentThread().getStackTrace());
+    	sync.setCurrentThreadStacktrace(new Throwable());
     	
     	try {
     		sync.lock();
@@ -356,7 +355,7 @@ public class ReentrantLock implements Lock, java.io.Serializable {
      *         thread; and {@code false} otherwise
      */
     public boolean tryLock() {
-    	sync.setCurrentThreadStacktrace(Thread.currentThread().getStackTrace());
+    	sync.setCurrentThreadStacktrace(new Throwable());
     	try {
     		return sync.nonfairTryAcquire(1);
     	} catch (DeadlockException de) {
